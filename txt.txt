@@ -1,0 +1,97 @@
+💾 Financial Module Documentation - For Future Reference
+🎯 Financial Module Overview
+Purpose:
+Complete financial tracking system for logistics operations - separate from Orders module for clean architecture.
+
+💰 Business Model Understanding
+Two Revenue Streams:
+1. COD Orders (Driver Collects Everything)
+2. Prepaid Orders (Customer Paid Merchant)
+🎛️ Financial System Features
+Core Components:
+Daily Settlement Tracking - Automatic daily records for each driver
+Driver Collection Management - Track what drivers owe
+Merchant Billing - Track what merchants owe (prepaid orders)
+Settlement Status Control - PENDING → PAID manual toggle
+Comprehensive Reporting - Filter by driver, dates, detailed breakdowns
+📊 Database Schema Design
+DailySettlement Model:
+MerchantBilling Model:
+Order Financial Fields (to be added to Order model):
+🚛 Driver Settlement System
+Automatic Daily Settlement Creation:
+Settlement Status Management:
+🏪 Merchant Billing System
+Prepaid Order Billing:
+📊 Dashboard & Reporting Requirements
+Driver Settlement Dashboard:
+Real-time outstanding balance per driver
+Daily settlement history with PENDING/PAID status
+Detailed order breakdown per day
+Settlement management (mark as paid)
+Export capabilities
+Merchant Billing Dashboard:
+Monthly billing summaries
+Outstanding amounts per merchant
+Payment history tracking
+Invoice generation
+Payment status management
+Financial Analytics:
+Daily/monthly revenue reports
+Driver performance metrics
+Settlement compliance tracking
+Cash flow analysis
+Outstanding receivables summary
+🔧 API Endpoints Structure
+Driver Settlement Endpoints:
+Merchant Billing Endpoints:
+Financial Reports Endpoints:
+🎯 Integration with Orders Module
+Orders Module Triggers Financial Events:
+Financial Module References Orders:
+💡 Key Configuration Settings
+Shipping Fee Options (Simple Dropdown):
+Commission Structure:
+Driver commission = Outside system (admin pays manually)
+System only tracks what drivers owe company
+No commission calculations in database
+🔐 Security & Access Control
+Financial Module Access:
+Admin Only: Full access to all financial data
+Finance Team: Read access to reports, settlement management
+Drivers: Can only view their own settlement status
+Merchants: Can only view their own billing information
+Audit Trail:
+Track who marked settlements as paid
+Record payment dates and methods
+Maintain history of all financial transactions
+Export capabilities for accounting integration
+📝 Implementation Priority (After Orders Module)
+Phase 1: Core Financial Tracking
+Daily settlement automatic creation
+Settlement status management (PENDING/PAID)
+Basic driver dashboard
+Phase 2: Merchant Billing
+Monthly billing record creation
+Prepaid order tracking
+Merchant billing dashboard
+Phase 3: Advanced Reporting
+Financial analytics
+Export capabilities
+Dashboard widgets
+Performance metrics
+✅ Remember for Implementation:
+Clean separation: Financial module only handles money, Orders module only handles logistics
+Flexible settlement periods: Daily tracking with manual settlement timing control
+Simple shipping pricing: Dropdown selection, no complex zone calculations
+Manual commission: System doesn't calculate commission, admin pays outside system
+Full history: Every day creates settlement record, full audit trail
+Egyptian market focus: COD-heavy market, bilingual support, EGP currency
+This document contains complete financial module requirements. Reference this when building the Financial module after Orders module is complete.
+
+Architectural Decision: Orders Module (Core Business) → Financial Module (Money Management) → Notifications Module (Communication)
+
+✅ Understood! Let's Build Orders Module Now!
+I'll remember all this financial context and we'll implement it as a separate Financial module after the Orders module is complete.
+
+Ready to start building the Orders module with clean, simple business logic! 🚀

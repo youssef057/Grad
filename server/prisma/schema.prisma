@@ -1,0 +1,504 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  MERCHANT
+  DRIVER
+  CUSTOMER
+  OUTSOURCE
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  INACTIVE
+}
+
+enum DriverAvailability {
+  AVAILABLE
+  ON_DELIVERY
+  OFF_DUTY
+  ON_BREAK
+}
+
+// Add these enums after DriverAvailability enum (around line 30)
+enum OrderStatus {
+  PENDING           // Just created, waiting for assignment
+  ASSIGNED          // Vehicle/driver assigned  
+  PICKED_UP         // Driver picked up from merchant
+  IN_TRANSIT        // On the way to customer
+  DELIVERED         // Successfully delivered
+  PARTIALLY_DELIVERED // Customer took some items, returned others
+  CANCELLED         // Order cancelled
+  RETURNED          // Customer refused/not found
+}
+
+enum OrderPriority {
+  LOW
+  NORMAL  
+  HIGH
+  URGENT
+}
+
+enum PaymentMethod {
+  COD              // Cash on Delivery
+  PREPAID          // Customer already paid merchant
+  CASH             // settlement payment method
+}
+
+enum PackageType {
+  ELECTRONICS
+  CLOTHES
+  FOOD
+  BOOKS
+  COSMETICS
+  ACCESSORIES
+  OTHER
+}
+
+enum TransactionType {
+  DELIVERY_FEE_OWED
+  PRODUCT_PAYMENT_OWED
+  REFUND
+  ADJUSTMENT
+  COMMISSION
+  SETTLEMENT
+}
+
+enum TransactionStatus {
+  PENDING
+  SETTLED
+  CANCELLED
+}
+
+// Add these enums after your existing enums (after DriverAvailability)
+enum VehicleType {
+  MOTORCYCLE
+  TRUCK
+}
+
+enum VehicleStatus {
+  AVAILABLE
+  ON_ROAD
+  OUT_OF_SERVICE
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  passwordHash      String
+  firstName         String
+  lastName          String
+  fullName          String?   // Computed or provided full name
+  phone             String    // Critical field as specified
+  role              UserRole  @default(CUSTOMER)
+  status            UserStatus @default(PENDING_VERIFICATION)
+  isEmailVerified   Boolean   @default(false)
+  
+  verificationToken       String?
+  verificationTokenExpires DateTime?
+
+  // Optional fields
+  address           String?
+  city              String?
+  state             String?
+  country           String?
+  postalCode        String?
+
+  // Company information for MERCHANT and OUTSOURCE
+  companyName       String?
+  companyDetails    Json?     // Flexible structure for various company details
+
+  // For DRIVER specific fields
+  driverAvailability DriverAvailability? // Only for drivers
+  licenseNumber      String?             // Only for drivers
+  deliveryCommission Int?                // Driver commission per delivery (EGP)
+
+  // Session and security
+  lastLogin         DateTime?
+  loginHistory      Json?     // Array of login timestamps and IP addresses
+  refreshToken      String?   // For session management
+  passwordResetToken String?
+  passwordResetExpires DateTime?
+  
+  // System fields
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Permissions - JSON field to store role-specific permissions
+  permissions       Json      @default("{}")
+
+ // Add this line to your existing User model
+
+ configUpdates         SystemConfig[] // Add this line
+ 
+// Replace the existing vehicle relationships section in User model (around line 87)
+  // Vehicle relationships
+  assignedVehicle    Vehicle?            @relation
+  vehicleAssignments VehicleAssignment[] 
+
+  // Order relationships - ADD THESE LINES
+  merchantOrders     Order[]             @relation("MerchantOrders")
+  customerOrders     Order[]             @relation("CustomerOrders") 
+  driverOrders       Order[]             @relation("DriverOrders")
+  outsourceOrders    Order[]             @relation("OutsourceOrders")  // ← ADD THIS LINE
+
+
+    // Financial relationships - ADD THESE LINES
+  
+  userTransactions     FinancialTransaction[] @relation("UserTransactions")     // NEW
+  merchantBalance      MerchantBalance?       @relation("MerchantBalance")
+  userSettlements      Settlement[]           @relation("UserSettlements")
+  settledSettlements   Settlement[]           @relation("SettledByUser")
+
+
+  routeOptimization    RouteOptimization?
+
+  @@map("users")
+  @@index([email])
+  @@index([phone])
+  @@index([role])
+  @@index([status])
+}
+
+// Replace your entire Vehicle model with this corrected version
+model Vehicle {
+  id            String        @id @default(uuid())
+  
+  // Identification
+  name          String        // "Ahmed's Delivery Truck"
+  nameAr        String?       // "شاحنة توصيل أحمد"
+  vehicleNumber String        @unique // Auto-generated "VH-001"
+  
+  // Type & Status
+  type          VehicleType   // MOTORCYCLE, TRUCK
+  status        VehicleStatus @default(AVAILABLE)
+  
+  // Capacity Management
+  maxUnits      Int           // Total capacity
+  currentUnits  Int           @default(0) // Current load
+  
+  // Current Driver Assignment
+  driver        User?         @relation(fields: [driverId], references: [id])
+  driverId      String?       @unique
+  assignedAt    DateTime?
+  
+  // Assignment History
+  assignments   VehicleAssignment[]
+  
+  // Order relationships
+  orders        Order[]
+  
+  // System fields
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// Add VehicleAssignment model for tracking assignment history
+model VehicleAssignment {
+  id           String    @id @default(uuid())
+  vehicle      Vehicle   @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  vehicleId    String
+  driver       User      @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  driverId     String
+  assignedAt   DateTime  @default(now())
+  unassignedAt DateTime?
+  assignedBy   String    // Admin user ID who made the assignment
+  
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+// Add this complete Order model after VehicleAssignment model (around line 150)
+model Order {
+  id                String         @id @default(uuid())
+  orderNumber       String         @unique
+  trackingNumber    String         @unique  // ← ADD THIS LINE
+  // Merchant (who created the order)
+  merchantId        String
+  merchant          User           @relation("MerchantOrders", fields: [merchantId], references: [id])
+  
+  // Customer (can be guest details OR registered user)
+  customerId        String?        // Optional - if customer has account
+  customer          User?          @relation("CustomerOrders", fields: [customerId], references: [id])
+  
+  // Customer details (always filled - either from User or manual entry)
+  customerName      String
+  customerNameAr    String?
+  customerPhone     String
+  customerAlternativePhone String?
+  customerEmail     String?
+  
+  // Delivery address (Full Egyptian format)
+  deliveryAddress   String
+  deliveryAddressAr String?
+  deliveryArea      String
+  deliveryAreaAr    String?
+  deliveryGovernorate String
+  deliveryGovernorateAr String?
+  deliveryFloor     String?
+  deliveryFloorAr   String?
+  deliveryLandmarks String?
+  deliveryLandmarksAr String?
+  
+  // Package information
+  packageDescription String?        // Optional - can be empty
+  packageDescriptionAr String?
+  packageType       PackageType     // Required dropdown
+  allowOpening      Boolean         // Required - can customer open package?
+  productPrice      Float           // What customer pays for product
+  finalProductPrice Float?          // Adjusted price for partial deliveries
+  
+  // Shipping & Payment
+  shippingFee       Float           // 40/50/60/70 EGP
+  paymentMethod     PaymentMethod   @default(COD)
+  
+  // Pickup details (optional override of merchant address)
+  pickupAddress     String?         // If null, use merchant's address
+  pickupAddressAr   String?
+  pickupTime        String?         // "14:00" - no restrictions
+  pickupNotes       String?
+  
+  // Delivery timing
+  expectedDeliveryDate DateTime?
+  deliveryTimeWindow String?        // "15:00-18:00"
+  
+  // Priority & Status
+  priority          OrderPriority   @default(NORMAL)
+  status            OrderStatus     @default(PENDING)
+  
+  // Assignment (like vehicle module)
+  vehicleId         String?
+  vehicle           Vehicle?        @relation(fields: [vehicleId], references: [id])
+  driverId          String?
+  driver            User?           @relation("DriverOrders", fields: [driverId], references: [id])
+  outsourceId       String?         // ← ADD THIS
+  outsource         User?           @relation("OutsourceOrders", fields: [outsourceId], references: [id])  // ← ADD THIS
+  assignedAt        DateTime?
+  assignedBy        String?         // Admin who assigned
+  
+ // ADD THESE COMMISSION FIELDS:
+  outsourceCommission       Float?  // Commission rate used for this order
+  outsourceCommissionAmount Float?  // Commission amount calculated
+  driverCommission          Float?  // Driver commission rate
+  driverCommissionAmount    Float?  // Driver commission amount
+
+
+  // Order lifecycle timestamps
+  pickedUpAt        DateTime?
+  inTransitAt       DateTime?
+  deliveredAt       DateTime?
+  
+  // Special instructions
+  specialInstructions String?
+  specialInstructionsAr String?
+  
+  // System fields
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  // Settlement tracking
+  addedToMerchantSettlement  Boolean @default(false)
+  addedToDriverSettlement    Boolean @default(false)
+  addedToOutsourceSettlement Boolean @default(false)
+
+  // Financial relationships - ADD THIS LINE
+  financialTransactions FinancialTransaction[]
+  settlementItems      SettlementItem[]
+  
+  @@index([orderNumber])
+  @@index([merchantId])
+  @@index([customerId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([outsourceId])  // ← ADD THIS LINE
+  @@index([status])
+  @@index([createdAt])
+  @@index([customerPhone])
+  @@index([trackingNumber])  // ← ADD THIS LINE
+}
+model FinancialTransaction {
+  id                String    @id @default(uuid())
+  transactionNumber String    @unique
+  orderId           String?
+  userId            String    // NEW FIELD - works for merchant, driver, outsource
+  userType          String    // NEW FIELD - "MERCHANT", "DRIVER", "OUTSOURCE"
+  type              TransactionType
+  amount            Float
+  currency          String    @default("EGP")
+  description       String
+  descriptionAr     String?
+  status            TransactionStatus @default(PENDING)
+  settlementId      String?
+  settledAt         DateTime?
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  order      Order?      @relation(fields: [orderId], references: [id])
+  user       User        @relation("UserTransactions", fields: [userId], references: [id])
+  settlement Settlement? @relation(fields: [settlementId], references: [id])
+
+  @@map("financial_transactions")
+  @@index([transactionNumber])
+  @@index([userId])      // NEW INDEX
+  @@index([userType])    // NEW INDEX
+  @@index([orderId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model MerchantBalance {
+  id                   String   @id @default(uuid())
+  merchantId           String   @unique
+  totalOwedToMerchant  Float    @default(0)
+  totalOwedByMerchant  Float    @default(0)
+  netBalance           Float    @default(0)
+  lastUpdated          DateTime @default(now())
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  merchant User @relation("MerchantBalance", fields: [merchantId], references: [id])
+
+  @@map("merchant_balances")
+  @@index([merchantId])
+}
+
+model Settlement {
+  id               String      @id @default(uuid())
+  settlementNumber String      @unique
+  settlementName   String      // "Settlement 1 - Ahmed Hassan"
+  userId           String      // Works for merchant, driver, outsource
+  userType         String      // "MERCHANT", "DRIVER", "OUTSOURCE"
+  amount           Float
+  status           String      @default("OPEN") // "OPEN", "CLOSED", "PAID"
+  paymentMethod    PaymentMethod?
+  notes            String?
+  notesAr          String?
+  settledBy        String?
+  settledAt        DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  // Relations
+  user            User                   @relation("UserSettlements", fields: [userId], references: [id])
+  settledByUser   User?                  @relation("SettledByUser", fields: [settledBy], references: [id])
+  transactions    FinancialTransaction[]
+  settlementItems SettlementItem[]
+
+  @@map("settlements")
+  @@index([settlementNumber])
+  @@index([userId]) 
+  @@index([settledBy])
+}
+
+model SettlementItem {
+  id               String    @id @default(uuid())
+  settlementId     String
+  orderId          String
+  
+  // Order snapshot at time of settlement
+  orderNumber      String
+  orderStatus      String
+  originalPrice    Float
+  finalPrice       Float    // For partial deliveries
+  shippingFee      Float
+  driverCommission Float?   // Commission earned for this order
+  
+  // Calculated amount for this settlement item
+  itemAmount       Float
+  
+  // System fields
+  createdAt        DateTime  @default(now())
+  
+  // Relations
+  settlement       Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  order            Order      @relation(fields: [orderId], references: [id])
+  
+  @@map("settlement_items")
+  @@index([settlementId])
+  @@index([orderId])
+}
+
+model SystemConfig {
+  id                    String   @id @default(cuid())
+  configKey             String   @unique
+  configValue           String
+  description           String?
+  descriptionAr         String?  // Arabic description support
+  updatedBy             String
+  updatedAt             DateTime @updatedAt
+  createdAt             DateTime @default(now())
+  
+  // Relations
+  updatedByUser         User     @relation(fields: [updatedBy], references: [id])
+  
+  @@map("system_config")
+  @@index([configKey])
+}
+
+model AddressGeoCache {
+  id              String   @id @default(uuid())
+  
+  // Original input
+  fullAddress     String
+  area            String?
+  governorate     String?
+  
+  // Cleaned/processed version
+  cleanedAddress  String
+  addressHash     String   @unique  // Hash of cleaned address
+  
+  // Geocoding results
+  latitude        Float?
+  longitude       Float?
+  googlePlaceId   String?
+  formattedAddress String?
+  
+  // Validation status
+  isValid         Boolean  @default(false)    // Passed pre-validation
+  isGeocoded      Boolean  @default(false)    // Successfully geocoded
+  geocodeAttempts Int      @default(0)        // Track failed attempts
+  
+  // Quality metrics
+  confidenceScore Float?   // Google's confidence in result
+  accuracyType    String?  // "ROOFTOP", "RANGE_INTERPOLATED", etc.
+  
+  // Timestamps
+  geocodedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("address_geocache")
+  @@index([addressHash])
+  @@index([area, governorate])
+  @@index([isValid, isGeocoded])
+  @@index([createdAt])
+}
+model RouteOptimization {
+  id                String   @id @default(cuid())
+  driverId          String   @unique
+  routeOptimized    Boolean  @default(false)
+  optimizedAt       DateTime?
+  estimatedDuration String?
+  estimatedDistance String?
+  optimizationData  Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  driver            User     @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  
+  @@map("RouteOptimizations")
+}
